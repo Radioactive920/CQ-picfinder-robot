@@ -23,7 +23,7 @@
 		"setu": {
 			"enable": false,
 			"allowPM": true,
-			"pximgServerPort": "60233",
+			"pximgServerPort": "26348",
 			"usePximgAddr": "",
 			"pximgProxy": "",
 			"deleteTime": 60,

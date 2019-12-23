@@ -25,6 +25,7 @@
 		},
 		"setu": {
 			"enable": true,
+			"antiShielding": false,
 			"allowPM": true,
 			"pximgServerPort": "60233",
 			"usePximgAddr": "216.24.187.160",
@@ -104,5 +105,8 @@
 	],
 	"whatanimeHost": [
 		"trace.moe"
+	],
+	"ascii2dHost": [
+		"ascii2d.net"
 	]
 }

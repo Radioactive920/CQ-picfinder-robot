@@ -1,9 +1,11 @@
+import { random } from 'lodash';
 import Axios from '../axiosProxy';
 import config from '../config';
 import Pximg from './pximg';
 import CQcode from '../CQcode';
 import { resolve } from 'url';
 import NamedRegExp from 'named-regexp-groups';
+import { createCanvas, loadImage } from 'canvas';
 
 const setting = config.picfinder.setu;
 const replys = config.picfinder.replys;
@@ -51,7 +53,7 @@ function sendSetu(context, replyFunc, logger, bot) {
 
         Axios.get(`https://api.lolicon.app/setu/zhuzhu.php?r18=${r18 ? 1 : 0}${keyword ? keyword : ''}${setting.size1200 ? '&size1200' : ''}`)
             .then(ret => ret.data)
-            .then(ret => {
+            .then(async ret => {
                 if (ret.error) {
                     replyFunc(context, ret.error, true);
                     return;
@@ -61,19 +63,43 @@ function sendSetu(context, replyFunc, logger, bot) {
                     let path = /(?<=https:\/\/i.pximg.net\/).+/.exec(url)[0];
                     url = resolve(proxy, path);
                 }
+                // 反和谐
+                let base64 = null;
+                if (setting.antiShielding) {
+                    await loadImage(url)
+                        .then(img => {
+                            const { width: w, height: h } = img;
+                            const canvas = createCanvas(w, h);
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            const pixels = [
+                                [0, 0, 1, 1],
+                                [w - 1, 0, w, 1],
+                                [0, h - 1, 1, h],
+                                [w - 1, h - 1, w, h],
+                            ];
+                            for (const pixel of pixels) {
+                                ctx.fillStyle = `rgba(${random(255)},${random(255)},${random(255)},0.3)`;
+                                ctx.fillRect(...pixel);
+                            }
+                            base64 = canvas.toDataURL().split(',')[1];
+                        })
+                        .catch(e => {
+                            console.error(`${new Date().toLocaleString()} [error] anti shielding\n${e}`);
+                        });
+                }
                 replyFunc(context, `${ret.url} (p${ret.p})`, true);
-                replyFunc(context, CQcode.img(url))
+                replyFunc(context, base64 ? CQcode.img64(base64) : CQcode.img(url))
                     .then(r => {
-                        if (delTime > 0)
+                        if (delTime > 0 && r && r.data && r.data.message_id)
                             setTimeout(() => {
-                                if (r && r.data && r.data.message_id)
-                                    bot('delete_msg', {
-                                        message_id: r.data.message_id,
-                                    });
+                                bot('delete_msg', {
+                                    message_id: r.data.message_id,
+                                });
                             }, delTime * 1000);
                     })
                     .catch(e => {
-                        console.log(`${new Date().toLocaleString()} [error] delete msg\n${e}`);
+                        console.error(`${new Date().toLocaleString()} [error] delete msg\n${e}`);
                     });
                 logger.doneSearch(context.user_id, 'setu');
             })

@@ -1,3 +1,4 @@
+import { version } from './package.json';
 import CQWebsocket from 'cq-websocket';
 import config from './modules/config';
 import saucenao from './modules/saucenao';
@@ -14,6 +15,7 @@ import Akhr from './modules/plugin/akhr';
 import _ from 'lodash';
 import minimist from 'minimist';
 import { rmdInit, rmdHandler } from './modules/plugin/reminder';
+import broadcast from './modules/broadcast';
 
 //常量
 const setting = config.picfinder;
@@ -74,55 +76,57 @@ bot.on('request.group.invite', context => {
 
 //管理员指令
 bot.on('message.private', (e, context) => {
-    if (context.user_id == setting.admin) {
-        const args = parseArgs(context.message);
+    if (context.user_id != setting.admin) return;
 
-        //允许加群
-        const group = args['add-group'];
-        if (group && typeof group == 'number') {
-            if (typeof groupAddRequests[context.group_id] == 'undefined') {
-                replyMsg(context, `将会同意进入群${group}的群邀请`);
-                //注册一次性监听器
-                bot.once('request.group.invite', context2 => {
-                    if (context2.group_id == group) {
-                        bot('set_group_add_request', {
-                            flag: context2.flag,
-                            type: 'invite',
-                            approve: true,
-                        });
-                        replyMsg(context, `已进入群${context2.group_id}`);
-                        return true;
-                    }
-                    return false;
-                });
-            } else {
-                bot('set_group_add_request', {
-                    flag: groupAddRequests[context.group_id],
-                    type: 'invite',
-                    approve: true,
-                });
-                replyMsg(context, `已进入群${context2.group_id}`);
-                delete groupAddRequests[context.group_id];
-            }
+    const args = parseArgs(context.message);
+
+    //允许加群
+    const group = args['add-group'];
+    if (group && typeof group == 'number') {
+        if (typeof groupAddRequests[context.group_id] == 'undefined') {
+            replyMsg(context, `将会同意进入群${group}的群邀请`);
+            //注册一次性监听器
+            bot.once('request.group.invite', context2 => {
+                if (context2.group_id == group) {
+                    bot('set_group_add_request', {
+                        flag: context2.flag,
+                        type: 'invite',
+                        approve: true,
+                    });
+                    replyMsg(context, `已进入群${context2.group_id}`);
+                    return true;
+                }
+                return false;
+            });
+        } else {
+            bot('set_group_add_request', {
+                flag: groupAddRequests[context.group_id],
+                type: 'invite',
+                approve: true,
+            });
+            replyMsg(context, `已进入群${context2.group_id}`);
+            delete groupAddRequests[context.group_id];
         }
-
-        //Ban
-        const { 'ban-u': bu, 'ban-g': bg } = args;
-        if (bu && typeof bu == 'number') {
-            Logger.ban('u', bu);
-            replyMsg(context, `已封禁用户${bu}`);
-        }
-        if (bg && typeof bg == 'number') {
-            Logger.ban('g', bg);
-            replyMsg(context, `已封禁群组${bg}`);
-        }
-
-        //明日方舟
-        if (args['update-akhr']) Akhr.updateData().then(() => replyMsg(context, '数据已更新'));
-
-        //停止程序（利用pm2重启）
-        if (args.shutdown) process.exit();
     }
+
+    if (args.broadcast) broadcast(bot, parseArgs(context.message, false, 'broadcast'));
+
+    //Ban
+    const { 'ban-u': bu, 'ban-g': bg } = args;
+    if (bu && typeof bu == 'number') {
+        Logger.ban('u', bu);
+        replyMsg(context, `已封禁用户${bu}`);
+    }
+    if (bg && typeof bg == 'number') {
+        Logger.ban('g', bg);
+        replyMsg(context, `已封禁群组${bg}`);
+    }
+
+    //明日方舟
+    if (args['update-akhr']) Akhr.updateData().then(() => replyMsg(context, '数据已更新'));
+
+    //停止程序（利用pm2重启）
+    if (args.shutdown) process.exit();
 });
 
 //设置监听器
@@ -191,6 +195,21 @@ function commonHandle(e, context) {
     //兼容其他机器人
     const startChar = context.message.charAt(0);
     if (startChar == '/' || startChar == '<') return true;
+
+    //通用指令
+    const args = parseArgs(context.message);
+    if (args.help) {
+        replyMsg(context, 'https://github.com/Tsuk1ko/CQ-picfinder-robot/wiki/%E5%A6%82%E4%BD%95%E9%A3%9F%E7%94%A8');
+        return true;
+    }
+    if (args.version) {
+        replyMsg(context, version);
+        return true;
+    }
+    if (args.about) {
+        replyMsg(context, 'https://github.com/Tsuk1ko/CQ-picfinder-robot');
+        return true;
+    }
 
     //setu
     if (setting.setu.enable) {
@@ -409,7 +428,9 @@ async function searchImg(context, customDB = -1) {
                         asErr,
                     }));
                     if (asErr) {
-                        console.error(`${getTime()} [error] Ascii2d`);
+                        const errMsg = (asErr.response && asErr.response.data.length < 50 && `\n${asErr.response.data}`) || '';
+                        replyMsg(context, `ascii2d 搜索失败${errMsg}`);
+                        console.error(`${getTime()} [error] ascii2d`);
                         console.error(asErr);
                     } else {
                         replyMsg(context, color);
@@ -467,7 +488,7 @@ function doAkhr(context) {
         const handleWords = words => {
             // fix some ...
             if (setting.akhr.ocr == 'ocr.space') words = _.map(words, w => w.replace(/冫口了/g, '治疗'));
-            replyMsg(context, `[CQ:image,file=base64://${Akhr.getResultImg(words)}]`);
+            replyMsg(context, CQ.img64(Akhr.getResultImg(words)));
         };
 
         const handleError = e => {
@@ -556,11 +577,11 @@ function getTime() {
     return new Date().toLocaleString();
 }
 
-function parseArgs(str, enableArray = false) {
+function parseArgs(str, enableArray = false, _key = null) {
     const m = minimist(
         str
-            .replace(/(--\w+)(\[CQ:)/g, '$1 $2')
-            .replace(/(\[CQ:[^\]]+\])(--\w+)/g, '$1 $2')
+            .replace(/(--\w+)(?:\s*)(\[CQ:)/g, '$1 $2')
+            .replace(/(\[CQ:[^\]]+\])(?:\s*)(--\w+)/g, '$1 $2')
             .split(' '),
         {
             boolean: true,
@@ -572,5 +593,6 @@ function parseArgs(str, enableArray = false) {
             if (Array.isArray(m[key])) m[key] = m[key][0];
         }
     }
+    if (_key && typeof m[_key] == 'string' && m._.length > 0) m[_key] += ' ' + m._.join(' ');
     return m;
 }

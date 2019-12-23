@@ -1,8 +1,10 @@
 import { get } from './axiosProxy';
 import Cheerio from 'cheerio';
 import CQ from './CQcode';
+import config from './config';
 
-const baseURL = 'https://ascii2d.net';
+const hosts = config.ascii2dHost;
+let hostsI = 0;
 
 /**
  * ascii2d 搜索
@@ -11,15 +13,18 @@ const baseURL = 'https://ascii2d.net';
  * @returns 色合検索 和 特徴検索 结果
  */
 async function doSearch(url) {
-    let { colorURL, colorHTML } = await get(`${baseURL}/search/url/${encodeURIComponent(url)}`).then(r => ({
+    let host = hosts[hostsI++ % hosts.length];
+    if (host === 'ascii2d.net') host = `https://${host}`;
+    else if (!/^https?:\/\//.test(host)) host = `http://${host}`;
+    let { colorURL, colorHTML } = await get(`${host}/search/url/${encodeURIComponent(url)}`).then(r => ({
         colorURL: r.request.res.responseUrl,
         colorHTML: r.data,
     }));
     let bovwURL = colorURL.replace('/color/', '/bovw/');
     let bovwHTML = await get(bovwURL).then(r => r.data);
     return {
-        color: 'ascii2d 色合検索\n' + getShareText(getDetail(colorHTML)),
-        bovw: 'ascii2d 特徴検索\n' + getShareText(getDetail(bovwHTML)),
+        color: 'ascii2d 色合検索\n' + getShareText(getDetail(colorHTML, host)),
+        bovw: 'ascii2d 特徴検索\n' + getShareText(getDetail(bovwHTML, host)),
     };
 }
 
@@ -27,24 +32,29 @@ async function doSearch(url) {
  * 解析 ascii2d 网页结果
  *
  * @param {string} html ascii2d HTML
+ * @param {string} baseURL ascii2d base URL
  * @returns 画像搜索结果
  */
-function getDetail(html) {
+function getDetail(html, baseURL) {
     const $ = Cheerio.load(html, {
         decodeEntities: false,
     });
-    let $box = $($('.item-box')[1]);
-    let thumbnail = baseURL + $box.find('.image-box img').attr('src');
-    let $link = $box.find('.detail-box a');
-    let $title = $($link[0]);
-    let $author = $($link[1]);
-    return {
-        thumbnail,
-        title: $title.html(),
-        author: $author.html(),
-        url: $title.attr('href'),
-        author_url: $author.attr('href'),
-    };
+    const $itembox = $('.item-box');
+    for (let i = 0; i < $itembox.length; i++) {
+        const $box = $($itembox[i]);
+        const $link = $box.find('.detail-box a');
+        if ($link.length === 0) continue;
+        const $title = $($link[0]);
+        const $author = $($link[1]);
+        return {
+            thumbnail: baseURL + $box.find('.image-box img').attr('src'),
+            title: $title.html(),
+            author: $author.html(),
+            url: $title.attr('href'),
+            author_url: $author.attr('href'),
+        };
+    }
+    return {};
 }
 
 function getShareText({ url, title, author, thumbnail, author_url }) {

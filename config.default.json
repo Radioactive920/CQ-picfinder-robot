@@ -24,7 +24,7 @@
 			"commonProb": 0.5
 		},
 		"setu": {
-			"enable": false,
+			"enable": true,
 			"antiShielding": false,
 			"allowPM": true,
 			"pximgServerPort": "60233",
